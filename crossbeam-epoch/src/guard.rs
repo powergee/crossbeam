@@ -3,7 +3,7 @@ use core::mem;
 
 use scopeguard::defer;
 
-use crate::atomic::Shared;
+use crate::atomic::{decompose_tag, Shared};
 use crate::collector::Collector;
 use crate::deferred::Deferred;
 use crate::internal::Local;
@@ -191,9 +191,10 @@ impl Guard {
     where
         F: FnOnce() -> R,
     {
-        if let Some(local) = self.local.as_ref() {
+        let (raw, tag) = decompose_tag::<Local>(self.local as usize);
+        if let Some(local) = (raw as *const Local).as_ref() {
             local.defer(Deferred::new(move || drop(f())), self);
-        } else {
+        } else if tag == 0 {
             drop(f());
         }
     }
@@ -517,4 +518,11 @@ pub unsafe fn unprotected() -> &'static Guard {
         local: core::ptr::null(),
     });
     &UNPROTECTED.0
+}
+
+/// doesn't drop at all
+#[inline]
+pub unsafe fn leaking() -> &'static Guard {
+    static LEAKING: usize = 1;
+    &*(&LEAKING as *const _ as *const Guard)
 }

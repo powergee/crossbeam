@@ -154,7 +154,7 @@ cfg_if! {
             Owned, Pointer, Shared,
         };
         pub use self::collector::{Collector, LocalHandle};
-        pub use self::guard::{unprotected, Guard};
+        pub use self::guard::{unprotected, Guard, leaking};
 
         #[allow(deprecated)]
         pub use self::atomic::{CompareAndSetError, CompareAndSetOrdering};

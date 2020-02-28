@@ -123,7 +123,7 @@ fn compose_tag<T: ?Sized + Pointable>(data: usize, tag: usize) -> usize {
 
 /// Decomposes a tagged pointer `data` into the pointer and the tag.
 #[inline]
-fn decompose_tag<T: ?Sized + Pointable>(data: usize) -> (usize, usize) {
+pub(crate) fn decompose_tag<T: ?Sized + Pointable>(data: usize) -> (usize, usize) {
     (data & !low_bits::<T>(), data & low_bits::<T>())
 }
 
