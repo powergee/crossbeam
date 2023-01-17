@@ -363,7 +363,6 @@ impl Local {
     }
 
     fn incr_counts(&self, is_collecting: bool, guard: &Guard) {
-        GLOBAL_GARBAGE_COUNT.fetch_add(1, Ordering::AcqRel);
         let collect_count = self.collect_count.get().wrapping_add(1);
         self.collect_count.set(collect_count);
 
@@ -385,6 +384,7 @@ impl Local {
     ///
     /// It should be safe for another thread to execute the given function.
     pub(crate) unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
+        GLOBAL_GARBAGE_COUNT.fetch_add(1, Ordering::AcqRel);
         let bag = self.bag.with_mut(|b| &mut *b);
 
         while let Err(d) = bag.try_push(deferred) {
