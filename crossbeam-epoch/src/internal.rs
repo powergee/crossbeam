@@ -184,6 +184,7 @@ impl Global {
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
     pub(crate) fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
+        GLOBAL_GARBAGE_COUNT.fetch_add(bag.len, Ordering::AcqRel);
         let bag = mem::replace(bag, Bag::new());
 
         atomic::fence(Ordering::SeqCst);
@@ -384,7 +385,6 @@ impl Local {
     ///
     /// It should be safe for another thread to execute the given function.
     pub(crate) unsafe fn defer(&self, mut deferred: Deferred, guard: &Guard) {
-        GLOBAL_GARBAGE_COUNT.fetch_add(1, Ordering::AcqRel);
         let bag = self.bag.with_mut(|b| &mut *b);
 
         while let Err(d) = bag.try_push(deferred) {
