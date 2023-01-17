@@ -39,7 +39,7 @@ use crate::primitive::cell::UnsafeCell;
 use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{Ordering, AtomicUsize};
 use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;
@@ -52,6 +52,9 @@ use crate::epoch::{AtomicEpoch, Epoch};
 use crate::guard::{unprotected, Guard};
 use crate::sync::list::{Entry, IsElement, IterError, List};
 use crate::sync::queue::Queue;
+
+#[allow(missing_docs)]
+pub static GLOBAL_GARBAGE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(any(crossbeam_sanitize, miri)))]
@@ -212,7 +215,10 @@ impl Global {
                 guard,
             ) {
                 None => break,
-                Some(sealed_bag) => drop(sealed_bag),
+                Some(sealed_bag) => {
+                    GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag._bag.len, Ordering::AcqRel);
+                    drop(sealed_bag);
+                }
             }
         }
     }
@@ -357,6 +363,7 @@ impl Local {
     }
 
     fn incr_counts(&self, is_collecting: bool, guard: &Guard) {
+        GLOBAL_GARBAGE_COUNT.fetch_add(1, Ordering::AcqRel);
         let collect_count = self.collect_count.get().wrapping_add(1);
         self.collect_count.set(collect_count);
 
