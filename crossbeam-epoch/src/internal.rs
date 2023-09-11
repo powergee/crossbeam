@@ -39,7 +39,7 @@ use crate::primitive::cell::UnsafeCell;
 use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
-use core::sync::atomic::{Ordering, AtomicUsize};
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
 use crossbeam_utils::CachePadded;
@@ -204,22 +204,45 @@ impl Global {
     pub(crate) fn collect(&self, guard: &Guard) {
         let global_epoch = self.try_advance(guard);
 
-        let steps = if cfg!(crossbeam_sanitize) {
+        let initial_steps = if cfg!(crossbeam_sanitize) {
             usize::max_value()
         } else {
             Self::COLLECT_STEPS
         };
 
-        for _ in 0..steps {
+        let default_steps = Cell::new(initial_steps);
+        let steps = if let Some(local) = unsafe { guard.local.as_ref() } {
+            let remaining = local.remaining_steps.get();
+            local.remaining_steps.set(remaining + initial_steps);
+            if remaining > 0 {
+                // Prevent nested collections.
+                return;
+            }
+            &local.remaining_steps
+        } else {
+            &default_steps
+        };
+        debug_assert!(steps.get() > 0);
+
+        loop {
             match self.queue.try_pop_if(
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
             ) {
-                None => break,
+                None => {
+                    steps.set(0);
+                    break;
+                }
                 Some(sealed_bag) => {
                     GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag._bag.len, Ordering::AcqRel);
                     drop(sealed_bag);
                 }
+            }
+
+            let remaining = steps.get();
+            steps.set(steps.get() - 1);
+            if remaining == 1 {
+                break;
             }
         }
     }
@@ -300,6 +323,9 @@ pub(crate) struct Local {
     collect_count: Cell<usize>,
     advance_count: Cell<usize>,
     prev_epoch: Cell<Epoch>,
+
+    /// The remaining number of `pop`s in a collection.
+    remaining_steps: Cell<usize>,
 }
 
 // Make sure `Local` is less than or equal to 2048 bytes.
@@ -336,6 +362,7 @@ impl Local {
                 collect_count: Cell::new(0),
                 advance_count: Cell::new(0),
                 prev_epoch: Cell::new(Epoch::starting()),
+                remaining_steps: Cell::new(0),
             })
             .into_shared(unprotected());
             collector.global.locals.insert(local, unprotected());
