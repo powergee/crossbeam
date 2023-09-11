@@ -210,19 +210,19 @@ impl Global {
             Self::COLLECT_STEPS
         };
 
-        let default_steps = Cell::new(initial_steps);
-        let steps = if let Some(local) = unsafe { guard.local.as_ref() } {
-            let remaining = local.remaining_steps.get();
-            local.remaining_steps.set(remaining + initial_steps);
-            if remaining > 0 {
-                // Prevent nested collections.
-                return;
-            }
-            &local.remaining_steps
-        } else {
-            &default_steps
-        };
-        debug_assert!(steps.get() > 0);
+        debug_assert!(
+            !guard.local.is_null(),
+            "An unprotected guard cannot be used to collect global garbages."
+        );
+
+        let remaining_steps = &unsafe { &*guard.local }.remaining_steps;
+        let current = remaining_steps.get();
+        remaining_steps.set(current + initial_steps);
+
+        if current > 0 {
+            // Prevent nested collections.
+            return;
+        }
 
         loop {
             match self.queue.try_pop_if(
@@ -230,7 +230,7 @@ impl Global {
                 guard,
             ) {
                 None => {
-                    steps.set(0);
+                    remaining_steps.set(0);
                     break;
                 }
                 Some(sealed_bag) => {
@@ -239,8 +239,8 @@ impl Global {
                 }
             }
 
-            let remaining = steps.get();
-            steps.set(steps.get() - 1);
+            let remaining = remaining_steps.get();
+            remaining_steps.set(remaining - 1);
             if remaining == 1 {
                 break;
             }
