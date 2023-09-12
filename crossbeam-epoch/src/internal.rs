@@ -204,7 +204,7 @@ impl Global {
     pub(crate) fn collect(&self, guard: &Guard) {
         let global_epoch = self.try_advance(guard);
 
-        let initial_steps = if cfg!(crossbeam_sanitize) {
+        let steps = if cfg!(crossbeam_sanitize) {
             usize::max_value()
         } else {
             Self::COLLECT_STEPS
@@ -215,22 +215,20 @@ impl Global {
             "An unprotected guard cannot be used to collect global garbages."
         );
 
-        let remaining_steps = &unsafe { &*guard.local }.remaining_steps;
-        let current = remaining_steps.get();
-        remaining_steps.set(current + initial_steps);
-
-        if current > 0 {
+        let collecting = &unsafe { &*guard.local }.collecting;
+        if collecting.get() {
             // Prevent nested collections.
             return;
         }
+        collecting.set(true);
 
-        loop {
+        for _ in 0..steps {
             match self.queue.try_pop_if(
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
             ) {
                 None => {
-                    remaining_steps.set(0);
+                    collecting.set(false);
                     break;
                 }
                 Some(sealed_bag) => {
@@ -238,13 +236,8 @@ impl Global {
                     drop(sealed_bag);
                 }
             }
-
-            let remaining = remaining_steps.get();
-            remaining_steps.set(remaining - 1);
-            if remaining == 1 {
-                break;
-            }
         }
+        collecting.set(false);
     }
 
     /// Attempts to advance the global epoch.
@@ -324,8 +317,7 @@ pub(crate) struct Local {
     advance_count: Cell<usize>,
     prev_epoch: Cell<Epoch>,
 
-    /// The remaining number of `pop`s in a collection.
-    remaining_steps: Cell<usize>,
+    collecting: Cell<bool>,
 }
 
 // Make sure `Local` is less than or equal to 2048 bytes.
@@ -362,7 +354,7 @@ impl Local {
                 collect_count: Cell::new(0),
                 advance_count: Cell::new(0),
                 prev_epoch: Cell::new(Epoch::starting()),
-                remaining_steps: Cell::new(0),
+                collecting: Cell::new(false),
             })
             .into_shared(unprotected());
             collector.global.locals.insert(local, unprotected());
