@@ -227,10 +227,7 @@ impl Global {
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
             ) {
-                None => {
-                    collecting.set(false);
-                    break;
-                }
+                None => break,
                 Some(sealed_bag) => {
                     GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag._bag.len, Ordering::AcqRel);
                     drop(sealed_bag);
