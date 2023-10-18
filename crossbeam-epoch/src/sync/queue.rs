@@ -193,10 +193,10 @@ impl<T> Queue<T> {
         T: Sync,
         F: Fn(&T) -> bool,
     {
-        loop {
-            if let Ok(head) = self.pop_if_internal(&condition, guard) {
-                return head;
-            }
+        if let Ok(head) = self.pop_if_internal(&condition, guard) {
+            return head;
+        } else {
+            None
         }
     }
 }

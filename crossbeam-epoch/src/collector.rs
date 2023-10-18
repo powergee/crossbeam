@@ -204,43 +204,6 @@ mod tests {
         .unwrap();
     }
 
-    #[cfg(not(crossbeam_sanitize))] // TODO: assertions failed due to `cfg(crossbeam_sanitize)` reduce `internal::MAX_OBJECTS`
-    #[test]
-    fn incremental() {
-        #[cfg(miri)]
-        const COUNT: usize = 500;
-        #[cfg(not(miri))]
-        const COUNT: usize = 100_000;
-        static DESTROYS: AtomicUsize = AtomicUsize::new(0);
-
-        let collector = Collector::new();
-        let handle = collector.register();
-
-        unsafe {
-            let guard = &handle.pin();
-            for _ in 0..COUNT {
-                let a = Owned::new(7i32).into_shared(guard);
-                guard.defer_unchecked(move || {
-                    drop(a.into_owned());
-                    DESTROYS.fetch_add(1, Ordering::Relaxed);
-                });
-            }
-            guard.flush();
-        }
-
-        let mut last = 0;
-
-        while last < COUNT {
-            let curr = DESTROYS.load(Ordering::Relaxed);
-            assert!(curr - last <= 1024);
-            last = curr;
-
-            let guard = &handle.pin();
-            collector.global.collect(guard);
-        }
-        assert!(DESTROYS.load(Ordering::Relaxed) == COUNT);
-    }
-
     #[test]
     fn buffering() {
         const COUNT: usize = 10;

@@ -204,12 +204,6 @@ impl Global {
     pub(crate) fn collect(&self, guard: &Guard) {
         let global_epoch = self.try_advance(guard);
 
-        let steps = if cfg!(crossbeam_sanitize) {
-            usize::max_value()
-        } else {
-            Self::COLLECT_STEPS
-        };
-
         debug_assert!(
             !guard.local.is_null(),
             "An unprotected guard cannot be used to collect global garbages."
@@ -222,7 +216,7 @@ impl Global {
         }
         collecting.set(true);
 
-        for _ in 0..steps {
+        loop {
             match self.queue.try_pop_if(
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
