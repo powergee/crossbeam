@@ -13,10 +13,12 @@
 /// handle.pin().flush();
 /// ```
 use core::fmt;
+use core::sync::atomic::Ordering;
 
 use crate::guard::Guard;
 use crate::internal::{Global, Local};
 use crate::primitive::sync::Arc;
+use crate::Epoch;
 
 /// An epoch-based garbage collector.
 pub struct Collector {
@@ -43,6 +45,12 @@ impl Collector {
     /// Registers a new handle for the collector.
     pub fn register(&self) -> LocalHandle {
         Local::register(self)
+    }
+
+    /// Reads the global epoch, without issueing a fence.
+    #[inline]
+    pub fn global_epoch(&self) -> Epoch {
+        self.global.epoch.load(Ordering::Relaxed)
     }
 }
 
