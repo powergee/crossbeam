@@ -188,15 +188,15 @@ impl<T> Queue<T> {
     ///
     /// Returns `None` if the queue is observed to be empty, or the head does not satisfy the given
     /// condition.
-    pub(crate) fn try_pop_if<F>(&self, condition: F, guard: &Guard) -> Option<T>
+    pub(crate) fn try_pop_if<F>(&self, condition: F, guard: &Guard) -> TryPopResult<T>
     where
         T: Sync,
         F: Fn(&T) -> bool,
     {
-        if let Ok(head) = self.pop_if_internal(&condition, guard) {
-            return head;
-        } else {
-            None
+        match self.pop_if_internal(&condition, guard) {
+            Ok(Some(v)) => TryPopResult::Success(v),
+            Ok(None) => TryPopResult::Empty,
+            Err(_) => TryPopResult::ExchangeFailure,
         }
     }
 }
@@ -213,6 +213,12 @@ impl<T> Drop for Queue<T> {
             drop(sentinel.into_owned());
         }
     }
+}
+
+pub(crate) enum TryPopResult<T> {
+    Success(T),
+    Empty,
+    ExchangeFailure,
 }
 
 #[cfg(all(test, not(crossbeam_loom)))]

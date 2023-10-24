@@ -73,7 +73,12 @@ impl Epoch {
     /// Returns whether this epoch is expired in the given [`Collector`].
     #[inline]
     pub fn is_expired_in(self, collector: &Collector) -> bool {
-        collector.global.epoch.load(Ordering::Relaxed).wrapping_sub(self) >= 2
+        collector
+            .global
+            .epoch
+            .load(Ordering::Relaxed)
+            .wrapping_sub(self)
+            >= 2
     }
 }
 

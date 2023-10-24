@@ -51,7 +51,7 @@ use crate::deferred::Deferred;
 use crate::epoch::{AtomicEpoch, Epoch};
 use crate::guard::{unprotected, Guard};
 use crate::sync::list::{Entry, IsElement, IterError, List};
-use crate::sync::queue::Queue;
+use crate::sync::queue::{Queue, TryPopResult};
 
 #[allow(missing_docs)]
 pub static GLOBAL_GARBAGE_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -169,6 +169,8 @@ pub(crate) struct Global {
 }
 
 impl Global {
+    const COLLECTS_MIN_TRIALS: usize = 8;
+
     /// Creates a new global data for garbage collection.
     #[inline]
     pub(crate) fn new() -> Self {
@@ -213,13 +215,14 @@ impl Global {
         }
         collecting.set(true);
 
-        loop {
+        for _ in 0..Self::COLLECTS_MIN_TRIALS {
             match self.queue.try_pop_if(
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
             ) {
-                None => break,
-                Some(sealed_bag) => {
+                TryPopResult::Empty => break,
+                TryPopResult::ExchangeFailure => continue,
+                TryPopResult::Success(sealed_bag) => {
                     GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag._bag.len, Ordering::AcqRel);
                     drop(sealed_bag);
                 }
