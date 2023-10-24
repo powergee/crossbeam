@@ -7,7 +7,7 @@
 //! If an object became garbage in some epoch, then we can be sure that after two advancements no
 //! participant will hold a reference to it. That is the crux of safe memory reclamation.
 
-use crate::primitive::sync::atomic::AtomicUsize;
+use crate::{primitive::sync::atomic::AtomicUsize, Collector};
 use core::sync::atomic::Ordering;
 
 /// An epoch that can be marked as pinned or unpinned.
@@ -15,7 +15,7 @@ use core::sync::atomic::Ordering;
 /// Internally, the epoch is represented as an integer that wraps around at some unspecified point
 /// and a flag that represents whether it is pinned or unpinned.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
-pub(crate) struct Epoch {
+pub struct Epoch {
     /// The least significant bit is set if pinned. The rest of the bits hold the epoch.
     data: usize,
 }
@@ -68,6 +68,12 @@ impl Epoch {
         Epoch {
             data: self.data.wrapping_add(2),
         }
+    }
+
+    /// Returns whether this epoch is expired in the given [`Collector`].
+    #[inline]
+    pub fn is_expired_in(self, collector: &Collector) -> bool {
+        collector.global.epoch.load(Ordering::Relaxed).wrapping_sub(self) >= 2
     }
 }
 

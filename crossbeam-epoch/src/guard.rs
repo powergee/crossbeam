@@ -6,6 +6,7 @@ use scopeguard::defer;
 use crate::atomic::{decompose_tag, Shared};
 use crate::collector::Collector;
 use crate::deferred::Deferred;
+use crate::epoch::Epoch;
 use crate::internal::Local;
 
 /// A guard that keeps the current thread pinned.
@@ -403,6 +404,13 @@ impl Guard {
     /// ```
     pub fn collector(&self) -> Option<&Collector> {
         unsafe { self.local.as_ref().map(|local| local.collector()) }
+    }
+
+    /// Returns the current local epoch. If the guard is unprotected, returns the starting epoch.
+    pub fn local_epoch(&self) -> Epoch {
+        unsafe { self.local.as_ref() }
+            .map(|local| local.epoch())
+            .unwrap_or(Epoch::starting())
     }
 }
 

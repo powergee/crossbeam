@@ -169,9 +169,6 @@ pub(crate) struct Global {
 }
 
 impl Global {
-    /// Number of bags to destroy.
-    const COLLECT_STEPS: usize = 8;
-
     /// Creates a new global data for garbage collection.
     #[inline]
     pub(crate) fn new() -> Self {
@@ -353,6 +350,11 @@ impl Local {
                 local: local.as_raw(),
             }
         }
+    }
+
+    #[inline]
+    pub(crate) fn epoch(&self) -> Epoch {
+        self.epoch.load(Ordering::Acquire)
     }
 
     /// Returns a reference to the `Global` in which this `Local` resides.

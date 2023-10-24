@@ -92,6 +92,7 @@ mod tests {
     #![allow(clippy::drop_copy)]
 
     use super::Deferred;
+    use core::hint::black_box;
     use std::cell::Cell;
 
     #[test]
@@ -100,7 +101,7 @@ mod tests {
         let a = [0usize; 1];
 
         let d = Deferred::new(move || {
-            drop(a);
+            black_box(a);
             fired.set(true);
         });
 
@@ -115,7 +116,7 @@ mod tests {
         let a = [0usize; 10];
 
         let d = Deferred::new(move || {
-            drop(a);
+            black_box(a);
             fired.set(true);
         });
 

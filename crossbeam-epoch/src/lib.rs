@@ -155,6 +155,7 @@ cfg_if! {
         };
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard, leaking};
+        pub use self::epoch::Epoch;
 
         #[allow(deprecated)]
         pub use self::atomic::{CompareAndSetError, CompareAndSetOrdering};
