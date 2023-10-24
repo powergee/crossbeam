@@ -7,7 +7,7 @@
 //! If an object became garbage in some epoch, then we can be sure that after two advancements no
 //! participant will hold a reference to it. That is the crux of safe memory reclamation.
 
-use crate::{primitive::sync::atomic::AtomicUsize, Collector};
+use crate::primitive::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 
 /// An epoch that can be marked as pinned or unpinned.
@@ -31,7 +31,7 @@ impl Epoch {
     ///
     /// Internally, epochs are represented as numbers in the range `(isize::MIN / 2) .. (isize::MAX
     /// / 2)`, so the returned distance will be in the same interval.
-    pub(crate) fn wrapping_sub(self, rhs: Self) -> isize {
+    pub fn wrapping_sub(self, rhs: Self) -> isize {
         // The result is the same with `(self.data & !1).wrapping_sub(rhs.data & !1) as isize >> 1`,
         // because the possible difference of LSB in `(self.data & !1).wrapping_sub(rhs.data & !1)`
         // will be ignored in the shift operation.
@@ -68,17 +68,6 @@ impl Epoch {
         Epoch {
             data: self.data.wrapping_add(2),
         }
-    }
-
-    /// Returns whether this epoch is expired in the given [`Collector`].
-    #[inline]
-    pub fn is_expired_in(self, collector: &Collector) -> bool {
-        collector
-            .global
-            .epoch
-            .load(Ordering::Relaxed)
-            .wrapping_sub(self)
-            >= 2
     }
 }
 
