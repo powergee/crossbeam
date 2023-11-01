@@ -385,7 +385,7 @@ impl Local {
         let advance_count = self.advance_count.get().wrapping_add(1);
         self.advance_count.set(advance_count);
 
-        if advance_count % Self::COUNTS_BETWEEN_TRY_ADVANCE == 0 {
+        if is_collecting || advance_count % Self::COUNTS_BETWEEN_TRY_ADVANCE == 0 {
             self.global().try_advance(&guard);
         }
         // After every `COUNTS_BETWEEN_COLLECT` try collecting some old garbage bags.
