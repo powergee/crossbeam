@@ -58,17 +58,21 @@ pub static GLOBAL_GARBAGE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(any(crossbeam_sanitize, miri)))]
-const MAX_OBJECTS: usize = 64;
+static mut MAX_OBJECTS: usize = 64;
 // Makes it more likely to trigger any potential data races.
 #[cfg(any(crossbeam_sanitize, miri))]
-const MAX_OBJECTS: usize = 4;
+static mut MAX_OBJECTS: usize = 4;
+
+/// Sets the capacity of thread-local deferred bag.
+///
+/// Note that an update on this capacity may not be reflected immediately to concurrent threads,
+/// because there is no synchronization between reads and writes on the capacity variable.
+pub fn set_bag_capacity(max_objects: usize) {
+    unsafe { MAX_OBJECTS = max_objects };
+}
 
 /// A bag of deferred functions.
-pub(crate) struct Bag {
-    /// Stashed objects.
-    deferreds: [Deferred; MAX_OBJECTS],
-    len: usize,
-}
+pub(crate) struct Bag(Vec<Deferred>);
 
 /// `Bag::try_push()` requires that it is safe for another thread to execute the given functions.
 unsafe impl Send for Bag {}
@@ -81,7 +85,7 @@ impl Bag {
 
     /// Returns `true` if the bag is empty.
     pub(crate) fn is_empty(&self) -> bool {
-        self.len == 0
+        self.0.is_empty()
     }
 
     /// Attempts to insert a deferred function into the bag.
@@ -93,9 +97,8 @@ impl Bag {
     ///
     /// It should be safe for another thread to execute the given function.
     pub(crate) unsafe fn try_push(&mut self, deferred: Deferred) -> Result<(), Deferred> {
-        if self.len < MAX_OBJECTS {
-            self.deferreds[self.len] = deferred;
-            self.len += 1;
+        if self.0.len() < self.0.capacity() {
+            self.0.push(deferred);
             Ok(())
         } else {
             Err(deferred)
@@ -104,26 +107,21 @@ impl Bag {
 
     /// Seals the bag with the given epoch.
     fn seal(self, epoch: Epoch) -> SealedBag {
-        SealedBag { epoch, _bag: self }
+        SealedBag { epoch, bag: self }
     }
 }
 
 impl Default for Bag {
     fn default() -> Self {
-        Bag {
-            len: 0,
-            deferreds: [Deferred::NO_OP; MAX_OBJECTS],
-        }
+        Bag(Vec::with_capacity(unsafe { MAX_OBJECTS }))
     }
 }
 
 impl Drop for Bag {
     fn drop(&mut self) {
         // Call all deferred functions.
-        for deferred in &mut self.deferreds[..self.len] {
-            let no_op = Deferred::NO_OP;
-            let owned_deferred = mem::replace(deferred, no_op);
-            owned_deferred.call();
+        for deferred in self.0.drain(..) {
+            deferred.call();
         }
     }
 }
@@ -131,9 +129,7 @@ impl Drop for Bag {
 // can't #[derive(Debug)] because Debug is not implemented for arrays 64 items long
 impl fmt::Debug for Bag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Bag")
-            .field("deferreds", &&self.deferreds[..self.len])
-            .finish()
+        f.debug_struct("Bag").field("deferreds", &self.0).finish()
     }
 }
 
@@ -141,7 +137,7 @@ impl fmt::Debug for Bag {
 #[derive(Default, Debug)]
 struct SealedBag {
     epoch: Epoch,
-    _bag: Bag,
+    bag: Bag,
 }
 
 /// It is safe to share `SealedBag` because `is_expired` only inspects the epoch.
@@ -183,7 +179,7 @@ impl Global {
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
     pub(crate) fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
-        GLOBAL_GARBAGE_COUNT.fetch_add(bag.len, Ordering::AcqRel);
+        GLOBAL_GARBAGE_COUNT.fetch_add(bag.0.len(), Ordering::AcqRel);
         let bag = mem::replace(bag, Bag::new());
 
         atomic::fence(Ordering::SeqCst);
@@ -223,7 +219,7 @@ impl Global {
                 TryPopResult::Empty => break,
                 TryPopResult::ExchangeFailure => continue,
                 TryPopResult::Success(sealed_bag) => {
-                    GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag._bag.len, Ordering::AcqRel);
+                    GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag.bag.0.len(), Ordering::AcqRel);
                     drop(sealed_bag);
                 }
             }
@@ -623,7 +619,7 @@ mod tests {
         let mut bag = Bag::new();
         assert!(bag.is_empty());
 
-        for _ in 0..MAX_OBJECTS {
+        for _ in 0..unsafe { MAX_OBJECTS } {
             assert!(unsafe { bag.try_push(Deferred::new(incr)).is_ok() });
             assert!(!bag.is_empty());
             assert_eq!(FLAG.load(Ordering::Relaxed), 0);
@@ -635,6 +631,6 @@ mod tests {
         assert_eq!(FLAG.load(Ordering::Relaxed), 0);
 
         drop(bag);
-        assert_eq!(FLAG.load(Ordering::Relaxed), MAX_OBJECTS);
+        assert_eq!(FLAG.load(Ordering::Relaxed), unsafe { MAX_OBJECTS });
     }
 }
