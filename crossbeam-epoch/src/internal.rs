@@ -322,9 +322,15 @@ fn local_size() {
 impl Local {
     /// Number of pinnings after which a participant will execute some deferred functions from the
     /// global queue.
-    const COUNTS_BETWEEN_COLLECT: usize = 64;
+    #[inline]
+    fn counts_between_collect() -> usize {
+        unsafe { MAX_OBJECTS }
+    }
 
-    const COUNTS_BETWEEN_TRY_ADVANCE: usize = 128;
+    #[inline]
+    fn counts_between_try_advance() -> usize {
+        unsafe { MAX_OBJECTS * 2 }
+    }
 
     /// Registers a new `Local` in the provided `Global`.
     pub(crate) fn register(collector: &Collector) -> LocalHandle {
@@ -384,9 +390,9 @@ impl Local {
         if is_collecting {
             self.global().try_advance(&guard);
             self.global().collect(&guard);
-        } else if advance_count % Self::COUNTS_BETWEEN_TRY_ADVANCE == 0 {
+        } else if advance_count % Self::counts_between_try_advance() == 0 {
             self.global().try_advance(&guard);
-        } else if collect_count % Self::COUNTS_BETWEEN_COLLECT == 0 {
+        } else if collect_count % Self::counts_between_collect() == 0 {
             // After every `COUNTS_BETWEEN_COLLECT` try collecting some old garbage bags.
             self.global().collect(&guard);
         }
