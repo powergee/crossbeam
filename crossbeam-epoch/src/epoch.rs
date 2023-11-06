@@ -69,6 +69,12 @@ impl Epoch {
             data: self.data.wrapping_add(2),
         }
     }
+
+    /// Returns the epoch value.
+    #[inline]
+    pub fn value(self) -> usize {
+        self.unpinned().data
+    }
 }
 
 /// An atomic value that holds an `Epoch`.
