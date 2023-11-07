@@ -39,7 +39,6 @@ use crate::primitive::cell::UnsafeCell;
 use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
-use core::num::Wrapping;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
@@ -64,12 +63,22 @@ static mut MAX_OBJECTS: usize = 64;
 #[cfg(any(crossbeam_sanitize, miri))]
 static mut MAX_OBJECTS: usize = 4;
 
+static mut MANUAL_EVENTS_BETWEEN_COLLECT: usize = 128;
+
 /// Sets the capacity of thread-local deferred bag.
 ///
 /// Note that an update on this capacity may not be reflected immediately to concurrent threads,
 /// because there is no synchronization between reads and writes on the capacity variable.
 pub fn set_bag_capacity(max_objects: usize) {
     unsafe { MAX_OBJECTS = max_objects };
+}
+
+/// Sets the manual collection interval.
+///
+/// Note that an update on this interval may not be reflected immediately to concurrent threads,
+/// because there is no synchronization between reads and writes on the interval variable.
+pub fn set_manual_collection_interval(interval: usize) {
+    unsafe { MANUAL_EVENTS_BETWEEN_COLLECT = interval };
 }
 
 /// A bag of deferred functions.
@@ -303,7 +312,8 @@ pub(crate) struct Local {
     collect_count: Cell<usize>,
     advance_count: Cell<usize>,
     prev_epoch: Cell<Epoch>,
-    pin_count: Cell<Wrapping<usize>>,
+    pin_count: Cell<usize>,
+    manual_count: Cell<usize>,
 
     collecting: Cell<bool>,
 
@@ -352,7 +362,8 @@ impl Local {
                 collect_count: Cell::new(0),
                 advance_count: Cell::new(0),
                 prev_epoch: Cell::new(Epoch::starting()),
-                pin_count: Cell::new(Wrapping(0)),
+                pin_count: Cell::new(0),
+                manual_count: Cell::new(0),
                 collecting: Cell::new(false),
                 epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
             })
@@ -488,11 +499,11 @@ impl Local {
 
             // Increment the pin counter.
             let count = self.pin_count.get();
-            self.pin_count.set(count + Wrapping(1));
+            self.pin_count.set(count.wrapping_add(1));
 
             // After every `PINNINGS_BETWEEN_COLLECT` try advancing the epoch and collecting
             // some garbage.
-            if count.0 % Self::PINNINGS_BETWEEN_COLLECT == 0 {
+            if count % Self::PINNINGS_BETWEEN_COLLECT == 0 {
                 self.global().collect(&guard);
             }
         }
@@ -591,6 +602,15 @@ impl Local {
             // to the `Global`. If so, the global data will be destroyed and all deferred functions
             // in its queue will be executed.
             drop(collector);
+        }
+    }
+
+    pub(crate) fn incr_manual_collection(&self, guard: &Guard) {
+        let manual_count = self.manual_count.get().wrapping_add(1);
+        self.manual_count.set(manual_count);
+
+        if manual_count % unsafe { MANUAL_EVENTS_BETWEEN_COLLECT } == 0 {
+            self.flush(guard);
         }
     }
 }

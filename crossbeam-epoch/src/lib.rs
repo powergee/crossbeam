@@ -156,7 +156,7 @@ cfg_if! {
         pub use self::collector::{Collector, LocalHandle};
         pub use self::guard::{unprotected, Guard, leaking};
         pub use self::epoch::Epoch;
-        pub use self::internal::set_bag_capacity;
+        pub use self::internal::{set_bag_capacity, set_manual_collection_interval};
 
         #[allow(deprecated)]
         pub use self::atomic::{CompareAndSetError, CompareAndSetOrdering};

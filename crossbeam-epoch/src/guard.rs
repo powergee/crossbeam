@@ -412,6 +412,14 @@ impl Guard {
             .map(|local| local.epoch())
             .unwrap_or(Epoch::starting())
     }
+
+    /// Increases the manual collection counter, and perform collection if the counter reaches
+    /// the threshold which is set by `set_manual_collection_interval`.
+    pub fn incr_manual_collection(&self) {
+        if let Some(local) = unsafe { self.local.as_ref() } {
+            local.incr_manual_collection(self);
+        }
+    }
 }
 
 impl Drop for Guard {
