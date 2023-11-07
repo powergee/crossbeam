@@ -427,6 +427,16 @@ impl Guard {
             .map(|local| local.bag_len())
             .unwrap_or(0)
     }
+
+    /// Pushes the local garbages to the global queue without collecting.
+    ///
+    /// It may be useful when a thread cannot put effort into collecting its own garbages,
+    /// but wants not to block the reclamation.
+    pub fn push_to_global(&self) {
+        if let Some(local) = unsafe { self.local.as_ref() } {
+            local.push_to_global(self);
+        }
+    }
 }
 
 impl Drop for Guard {

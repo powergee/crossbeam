@@ -438,13 +438,16 @@ impl Local {
     }
 
     pub(crate) fn flush(&self, guard: &Guard) {
+        self.push_to_global(guard);
+        self.incr_counts(true, guard);
+    }
+
+    pub(crate) fn push_to_global(&self, guard: &Guard) {
         let bag = self.bag.with_mut(|b| unsafe { &mut *b });
 
         if !bag.is_empty() {
             self.global().push_bag(bag, guard);
         }
-
-        self.incr_counts(true, guard);
     }
 
     /// Pins the `Local`.
@@ -583,12 +586,11 @@ impl Local {
         // Temporarily increment handle count. This is required so that the following call to `pin`
         // doesn't call `finalize` again.
         self.handle_count.set(1);
-        unsafe {
+        {
             // Pin and move the local bag into the global queue. It's important that `push_bag`
             // doesn't defer destruction on any new garbage.
             let guard = &self.pin();
-            self.global()
-                .push_bag(self.bag.with_mut(|b| &mut *b), guard);
+            self.push_to_global(guard);
         }
         // Revert the handle count back to zero.
         self.handle_count.set(0);
