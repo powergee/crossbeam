@@ -63,7 +63,7 @@ static mut MAX_OBJECTS: usize = 64;
 #[cfg(any(crossbeam_sanitize, miri))]
 static mut MAX_OBJECTS: usize = 4;
 
-static mut MANUAL_EVENTS_BETWEEN_COLLECT: usize = 64;
+static mut MANUAL_EVENTS_BETWEEN_COLLECT: usize = 128;
 
 /// Sets the capacity of thread-local deferred bag.
 ///
