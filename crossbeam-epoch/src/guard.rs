@@ -420,6 +420,13 @@ impl Guard {
             local.incr_manual_collection(self);
         }
     }
+
+    /// Returns the current length of the local garbage bag.
+    pub fn local_bag_len(&self) -> usize {
+        unsafe { self.local.as_ref() }
+            .map(|local| local.bag_len())
+            .unwrap_or(0)
+    }
 }
 
 impl Drop for Guard {

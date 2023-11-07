@@ -290,6 +290,11 @@ impl Global {
         self.epoch.store(new_epoch, Ordering::Release);
         new_epoch
     }
+
+    /// Checks if the global queue is empty.
+    pub(crate) fn is_global_queue_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
 }
 
 /// Participant for garbage collection.
@@ -611,6 +616,10 @@ impl Local {
         if manual_count % unsafe { MANUAL_EVENTS_BETWEEN_COLLECT } == 0 {
             self.flush(guard);
         }
+    }
+
+    pub(crate) fn bag_len(&self) -> usize {
+        self.bag.with(|b| unsafe { &*b }.0.len())
     }
 }
 

@@ -199,6 +199,11 @@ impl<T> Queue<T> {
             Err(_) => TryPopResult::ExchangeFailure,
         }
     }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.head.load(Acquire, unsafe { unprotected() })
+            == self.tail.load(Acquire, unsafe { unprotected() })
+    }
 }
 
 impl<T> Drop for Queue<T> {
