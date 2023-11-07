@@ -148,7 +148,9 @@ impl SealedBag {
     fn is_expired(&self, global_epoch: Epoch) -> bool {
         // A pinned participant can witness at most one epoch advancement. Therefore, any bag that
         // is within one epoch of the current one cannot be destroyed yet.
-        global_epoch.wrapping_sub(self.epoch) >= 2
+        // NOTE: This version of EBR maintain sepoch skew of threads ≤ 1 and reclaim garbages
+        // three epochs ago.
+        global_epoch.wrapping_sub(self.epoch) >= 3
     }
 }
 
