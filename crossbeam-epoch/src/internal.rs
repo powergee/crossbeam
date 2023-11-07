@@ -39,6 +39,7 @@ use crate::primitive::cell::UnsafeCell;
 use crate::primitive::sync::atomic;
 use core::cell::Cell;
 use core::mem::{self, ManuallyDrop};
+use core::num::Wrapping;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
@@ -302,6 +303,7 @@ pub(crate) struct Local {
     collect_count: Cell<usize>,
     advance_count: Cell<usize>,
     prev_epoch: Cell<Epoch>,
+    pin_count: Cell<Wrapping<usize>>,
 
     collecting: Cell<bool>,
 
@@ -324,6 +326,8 @@ fn local_size() {
 impl Local {
     /// Number of pinnings after which a participant will execute some deferred functions from the
     /// global queue.
+    const PINNINGS_BETWEEN_COLLECT: usize = 128;
+
     #[inline]
     fn counts_between_collect() -> usize {
         unsafe { MAX_OBJECTS }
@@ -348,6 +352,7 @@ impl Local {
                 collect_count: Cell::new(0),
                 advance_count: Cell::new(0),
                 prev_epoch: Cell::new(Epoch::starting()),
+                pin_count: Cell::new(Wrapping(0)),
                 collecting: Cell::new(false),
                 epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
             })
@@ -479,6 +484,16 @@ impl Local {
             if new_epoch != self.prev_epoch.get() {
                 self.prev_epoch.set(new_epoch);
                 self.advance_count.set(0);
+            }
+
+            // Increment the pin counter.
+            let count = self.pin_count.get();
+            self.pin_count.set(count + Wrapping(1));
+
+            // After every `PINNINGS_BETWEEN_COLLECT` try advancing the epoch and collecting
+            // some garbage.
+            if count.0 % Self::PINNINGS_BETWEEN_COLLECT == 0 {
+                self.global().collect(&guard);
             }
         }
 
