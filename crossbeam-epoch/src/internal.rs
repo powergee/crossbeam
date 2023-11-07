@@ -408,12 +408,9 @@ impl Local {
         let advance_count = self.advance_count.get().wrapping_add(1);
         self.advance_count.set(advance_count);
 
-        if is_collecting {
+        if advance_count % Self::counts_between_try_advance() == 0 {
             self.global().try_advance(&guard);
-            self.global().collect(&guard);
-        } else if advance_count % Self::counts_between_try_advance() == 0 {
-            self.global().try_advance(&guard);
-        } else if collect_count % Self::counts_between_collect() == 0 {
+        } else if is_collecting || collect_count % Self::counts_between_collect() == 0 {
             // After every `COUNTS_BETWEEN_COLLECT` try collecting some old garbage bags.
             self.global().collect(&guard);
         }
@@ -504,10 +501,9 @@ impl Local {
             let count = self.pin_count.get();
             self.pin_count.set(count.wrapping_add(1));
 
-            // After every `PINNINGS_BETWEEN_COLLECT` try advancing the epoch and collecting
-            // some garbage.
+            // After every `PINNINGS_BETWEEN_COLLECT` flush local garbages.
             if count % Self::PINNINGS_BETWEEN_COLLECT == 0 {
-                self.global().collect(&guard);
+                self.flush(&guard);
             }
         }
 
