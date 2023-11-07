@@ -209,6 +209,9 @@ impl Global {
     /// `collect()` is not called.
     #[cold]
     pub(crate) fn collect(&self, guard: &Guard) {
+        if let Some(local) = unsafe { guard.local.as_ref() } {
+            local.manual_count.set(0);
+        }
         let global_epoch = self.try_advance(guard);
 
         debug_assert!(
