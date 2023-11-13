@@ -51,7 +51,7 @@ use crate::deferred::Deferred;
 use crate::epoch::{AtomicEpoch, Epoch};
 use crate::guard::{unprotected, Guard};
 use crate::sync::list::{Entry, IsElement, IterError, List};
-use crate::sync::queue::{Queue, TryPopResult};
+use crate::sync::queue::Queue;
 
 #[allow(missing_docs)]
 pub static GLOBAL_GARBAGE_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -231,9 +231,8 @@ impl Global {
                 &|sealed_bag: &SealedBag| sealed_bag.is_expired(global_epoch),
                 guard,
             ) {
-                TryPopResult::Empty => break,
-                TryPopResult::ExchangeFailure => continue,
-                TryPopResult::Success(sealed_bag) => {
+                None => break,
+                Some(sealed_bag) => {
                     GLOBAL_GARBAGE_COUNT.fetch_sub(sealed_bag.bag.0.len(), Ordering::AcqRel);
                     drop(sealed_bag);
                 }
@@ -320,7 +319,6 @@ pub(crate) struct Local {
     collect_count: Cell<usize>,
     advance_count: Cell<usize>,
     prev_epoch: Cell<Epoch>,
-    pin_count: Cell<usize>,
     manual_count: Cell<usize>,
 
     collecting: Cell<bool>,
@@ -342,10 +340,6 @@ fn local_size() {
 }
 
 impl Local {
-    /// Number of pinnings after which a participant will execute some deferred functions from the
-    /// global queue.
-    const PINNINGS_BETWEEN_COLLECT: usize = 128;
-
     #[inline]
     fn counts_between_collect() -> usize {
         unsafe { MAX_OBJECTS }
@@ -370,7 +364,6 @@ impl Local {
                 collect_count: Cell::new(0),
                 advance_count: Cell::new(0),
                 prev_epoch: Cell::new(Epoch::starting()),
-                pin_count: Cell::new(0),
                 manual_count: Cell::new(0),
                 collecting: Cell::new(false),
                 epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
@@ -510,15 +503,6 @@ impl Local {
             if new_epoch != self.prev_epoch.get() {
                 self.prev_epoch.set(new_epoch);
                 self.advance_count.set(0);
-            }
-
-            // Increment the pin counter.
-            let count = self.pin_count.get();
-            self.pin_count.set(count.wrapping_add(1));
-
-            // After every `PINNINGS_BETWEEN_COLLECT` flush local garbages.
-            if count % Self::PINNINGS_BETWEEN_COLLECT == 0 {
-                self.flush(&guard);
             }
         }
 
